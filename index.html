@@ -40,6 +40,19 @@
     .result-msg{font-size:22px;font-weight:700;text-align:center;margin:16px 0}
     .debug-box{background:#FFF3CD;border-left:4px solid #FFC107;padding:12px;border-radius:8px;margin:16px 0;font-size:11px;color:#856404;font-family:monospace;max-height:150px;overflow-y:auto;display:none}
     .footer{text-align:center;color:rgba(255,255,255,.7);padding:20px;font-size:12px}
+    /* Notificacion inline */
+    .notif{padding:14px 16px;border-radius:10px;font-size:15px;font-weight:600;text-align:center;margin:12px 0;animation:slideUp .3s ease}
+    .notif-success{background:#E8F5E9;color:#107C10;border:2px solid #107C10}
+    .notif-error{background:#FFEBEE;color:#C4314B;border:2px solid #C4314B}
+    .notif-warn{background:#FFF3CD;color:#856404;border:2px solid #FFC107}
+    /* Email badge */
+    .email-badge{display:inline-flex;align-items:center;gap:6px;padding:6px 12px;border-radius:20px;font-size:13px;font-weight:500;margin-top:8px}
+    .email-ok{background:#E8F5E9;color:#107C10}
+    .email-fail{background:#FFEBEE;color:#C4314B}
+    .email-skip{background:#F3F2F1;color:#666}
+    /* Spinner */
+    .spinner{display:inline-block;width:20px;height:20px;border:3px solid rgba(255,255,255,.3);border-top-color:white;border-radius:50%;animation:spin .7s linear infinite;vertical-align:middle;margin-right:8px}
+    @keyframes spin{to{transform:rotate(360deg)}}
   </style>
 </head>
 <body>
@@ -84,12 +97,13 @@
         <div id="result-icon" class="result-icon"></div>
         <div id="result-msg" class="result-msg"></div>
         <div id="visitor-data"></div>
+        <div id="notif-area"></div>
         <button id="btn-confirm" class="btn btn-success hidden" onclick="confirmarIngreso()">Confirmar Ingreso</button>
         <button class="btn btn-secondary" onclick="volver()">Volver</button>
       </div>
     </div>
 
-    <div class="footer">Sistema Control de Acceso - PWA v6.0</div>
+    <div class="footer">Sistema Control de Acceso - PWA v6.1</div>
   </div>
 
 <script>
@@ -108,6 +122,13 @@ function debug(msg) {
   log.innerHTML += '[' + t + '] ' + msg + '<br>';
   log.scrollTop = log.scrollHeight;
   console.log('[DEBUG]', msg);
+}
+
+// ===== NOTIFICACION INLINE (reemplaza alert) =====
+function mostrarNotif(tipo, texto) {
+  var area = document.getElementById('notif-area');
+  area.innerHTML = '<div class="notif notif-' + tipo + '">' + texto + '</div>';
+  setTimeout(function() { area.innerHTML = ''; }, 5000);
 }
 
 // ===== LLAMADA API CON JSONP (evita CORS) =====
@@ -145,7 +166,7 @@ function llamarAPI(params) {
 // ===== VERIFICAR CONEXION =====
 window.addEventListener('load', function() {
   var statusBar = document.getElementById('status-bar');
-  
+
   if (API_URL.indexOf('YOUR_SCRIPT_ID') !== -1) {
     statusBar.className = 'status-bar status-error';
     statusBar.textContent = 'ERROR: Falta configurar URL de Apps Script';
@@ -154,7 +175,7 @@ window.addEventListener('load', function() {
   }
 
   debug('Verificando conexion...');
-  
+
   llamarAPI('action=ping')
     .then(function(data) {
       debug('Respuesta ping: ' + JSON.stringify(data));
@@ -179,7 +200,7 @@ window.addEventListener('load', function() {
 function solicitarCamara() {
   debug('Solicitando camara...');
   var cameraBox = document.getElementById('camera-box');
-  
+
   if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
     cameraBox.innerHTML = '<p>Tu navegador no soporta camara</p>';
     debug('ERROR: Sin soporte de camara');
@@ -220,14 +241,13 @@ function crearEscaner() {
     function(texto) {
       debug('QR detectado: ' + texto);
       html5QrCode.stop();
-      
-      // Extraer codigo del URL si viene como URL completa
+
       var codigo = texto;
       if (texto.indexOf('qr=') !== -1) {
         codigo = texto.split('qr=')[1].split('&')[0];
         codigo = decodeURIComponent(codigo);
       }
-      
+
       validarCodigo(codigo);
     },
     function() {}
@@ -242,7 +262,7 @@ function crearEscaner() {
 function validarManual() {
   var codigo = document.getElementById('codigo-manual').value.trim();
   if (!codigo) {
-    alert('Ingrese un codigo');
+    mostrarNotif('error', 'Ingrese un codigo');
     return;
   }
   if (html5QrCode && html5QrCode.isScanning) {
@@ -283,6 +303,7 @@ function mostrarResultado(data) {
   var msgEl = document.getElementById('result-msg');
   var dataEl = document.getElementById('visitor-data');
   var btnConfirm = document.getElementById('btn-confirm');
+  document.getElementById('notif-area').innerHTML = '';
 
   if (data.ok) {
     iconEl.style.color = '#107C10';
@@ -298,7 +319,7 @@ function mostrarResultado(data) {
       '<tr><td>Area</td><td>' + (d.area || '-') + '</td></tr>' +
       '<tr><td>Patente</td><td>' + (d.patente || '-') + '</td></tr>' +
       '</table>';
-    
+
     btnConfirm.classList.remove('hidden');
   } else {
     iconEl.style.color = '#C4314B';
@@ -314,26 +335,39 @@ function mostrarResultado(data) {
 function confirmarIngreso() {
   var btn = document.getElementById('btn-confirm');
   btn.disabled = true;
-  btn.textContent = 'Procesando...';
+  btn.innerHTML = '<span class="spinner"></span>Procesando...';
+  document.getElementById('notif-area').innerHTML = '';
   debug('Confirmando ingreso...');
 
   llamarAPI('action=confirmar&qr=' + encodeURIComponent(codigoActual))
     .then(function(data) {
       debug('Confirmacion: ' + JSON.stringify(data));
+      btn.disabled = false;
+      btn.textContent = 'Confirmar Ingreso';
+
       if (data.ok) {
-        alert('INGRESO REGISTRADO: ' + (data.visitante || ''));
-        volver();
+        // Mostrar estado del correo si la API lo informa
+        var emailHtml = '';
+        if (data.emailEnviado === true) {
+          emailHtml = '<div style="text-align:center"><span class="email-badge email-ok">Correo enviado</span></div>';
+        } else if (data.emailEnviado === false) {
+          emailHtml = '<div style="text-align:center"><span class="email-badge email-fail">Correo no enviado &mdash; ' + (data.emailError || 'Error desconocido') + '</span></div>';
+        }
+
+        document.getElementById('notif-area').innerHTML =
+          '<div class="notif notif-success">INGRESO REGISTRADO: ' + (data.visitante || '') + '</div>' + emailHtml;
+
+        // Volver automaticamente despues de 3 segundos
+        setTimeout(function() { volver(); }, 3000);
       } else {
-        alert('Error: ' + data.mensaje);
-        btn.disabled = false;
-        btn.textContent = 'Confirmar Ingreso';
+        mostrarNotif('error', 'Error: ' + (data.mensaje || 'Error desconocido'));
       }
     })
     .catch(function(err) {
       debug('Error confirmacion: ' + err.message);
-      alert('Error: ' + err.message);
       btn.disabled = false;
       btn.textContent = 'Confirmar Ingreso';
+      mostrarNotif('error', 'Error de red: ' + err.message);
     });
 }
 
@@ -342,6 +376,7 @@ function volver() {
   document.getElementById('codigo-manual').value = '';
   document.getElementById('screen-result').classList.add('hidden');
   document.getElementById('screen-scan').classList.remove('hidden');
+  document.getElementById('notif-area').innerHTML = '';
   var btn = document.getElementById('btn-confirm');
   btn.disabled = false;
   btn.textContent = 'Confirmar Ingreso';
